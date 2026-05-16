@@ -1,0 +1,16 @@
+
+    Machine Learning is a branch of Artificial Intelligence (AI)
+    that enables systems to learn from data without being explicitly programmed.
+
+    Types of Machine Learning:
+    1. Supervised Learning
+    2. Unsupervised Learning
+    3. Reinforcement Learning
+
+    Popular libraries used in Machine Learning:
+    - NumPy
+    - Pandas
+    - Scikit-learn
+    - TensorFlow
+    - PyTorch
+    

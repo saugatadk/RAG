@@ -1,0 +1,12 @@
+
+    Python is a high-level, interpreted programming language.
+    It is known for its simple syntax and readability.
+    Python supports multiple programming paradigms such as procedural,
+    object-oriented, and functional programming.
+
+    Popular uses of Python include:
+    - Web Development
+    - Data Science
+    - Automation
+    - Machine Learning
+    - Game Development
