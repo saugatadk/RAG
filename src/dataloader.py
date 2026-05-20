@@ -1,17 +1,17 @@
-from pathlib import Path
-from typing import List, Any
+from typing import List, Any, Optional
 from langchain_community.document_loaders import PyPDFLoader, TextLoader, CSVLoader
 from langchain_community.document_loaders import Docx2txtLoader
 from langchain_community.document_loaders.excel import UnstructuredExcelLoader
 from langchain_community.document_loaders import JSONLoader
+from src.paths import resolve_path
 
-def load_all_documents(data_dir: str) -> List[Any]:
+def load_all_documents(data_dir: Optional[str] = None) -> List[Any]:
     """
     Load all supported files from the data directory and convert to LangChain document structure.
     Supported: PDF, TXT, CSV, Excel, Word, JSON
     """
     # Use project root data folder
-    data_path = Path(data_dir).resolve()
+    data_path = resolve_path(data_dir, "data")
     print(f"[DEBUG] Data path: {data_path}")
     documents = []
 

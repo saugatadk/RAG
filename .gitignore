@@ -1,14 +1,30 @@
 # Python-generated files
 __pycache__/
 *.py[oc]
+*.pyd
 build/
 dist/
 wheels/
 *.egg-info
+*.log
 
 # Virtual environments
-.venv
+.venv/
+.python-version
 .env
+.env.*
 
+# Notebook and tool caches
+.ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Vector stores and model artifacts
 data/faiss_store/
 data/vector_store/
+data/uploads/
+faiss_store/

@@ -1,26 +1,31 @@
 import os
+from typing import Optional, List, Dict, Any
 import requests
 from dotenv import load_dotenv
 from src.dataloader import load_all_documents
 from src.vectorstore import FaissVectorStore
+from src.paths import resolve_path
 
 load_dotenv()
 
 class RAGSearch:
     def __init__(
         self,
-        persist_dir: str = "faiss_store",
+        persist_dir: Optional[str] = None,
+        data_dir: Optional[str] = None,
         embedding_model: str = "all-MiniLM-L6-v2",
         llm_model: str = "openai/gpt-oss-120b:free",
         base_url: str = "https://openrouter.ai/api/v1/chat/completions",
         timeout: int = 60,
     ):
-        self.vectorstore = FaissVectorStore(persist_dir, embedding_model)
+        self.persist_dir = str(resolve_path(persist_dir, "data/faiss_store"))
+        self.data_dir = str(resolve_path(data_dir, "data"))
+        self.vectorstore = FaissVectorStore(self.persist_dir, embedding_model)
         # Load or build vectorstore
-        faiss_path = os.path.join(persist_dir, "faiss.index")
-        meta_path = os.path.join(persist_dir, "metadata.pkl")
+        faiss_path = os.path.join(self.persist_dir, "faiss.index")
+        meta_path = os.path.join(self.persist_dir, "metadata.pkl")
         if not (os.path.exists(faiss_path) and os.path.exists(meta_path)):
-            docs = load_all_documents("data")
+            docs = load_all_documents(self.data_dir)
             self.vectorstore.build_from_documents(docs)
         else:
             self.vectorstore.load()
@@ -53,14 +58,29 @@ class RAGSearch:
         data = response.json()
         return data["choices"][0]["message"]["content"]
 
-    def search_and_summarize(self, query: str, top_k: int = 5) -> str:
+    def search_with_context(self, query: str, top_k: int = 5) -> Dict[str, Any]:
         results = self.vectorstore.query(query, top_k=top_k)
-        texts = [r["metadata"].get("text", "") for r in results if r["metadata"]]
-        context = "\n\n".join(texts)
-        if not context:
-            return "No relevant documents found."
-        prompt = f"""Summarize the following context for the query: '{query}'\n\nContext:\n{context}\n\nSummary:"""
-        return self._openrouter_chat(prompt)
+        contexts: List[Dict[str, Any]] = []
+        for result in results:
+            metadata = result.get("metadata") or {}
+            contexts.append(
+                {
+                    "text": metadata.get("text", ""),
+                    "source": metadata.get("source"),
+                    "page": metadata.get("page"),
+                    "distance": result.get("distance"),
+                }
+            )
+        context_text = "\n\n".join([c["text"] for c in contexts if c["text"]])
+        if not context_text:
+            return {"summary": "No relevant documents found.", "results": contexts}
+        prompt = f"""Summarize the following context for the query: '{query}'\n\nContext:\n{context_text}\n\nSummary:"""
+        summary = self._openrouter_chat(prompt)
+        return {"summary": summary, "results": contexts}
+
+    def search_and_summarize(self, query: str, top_k: int = 5) -> str:
+        response = self.search_with_context(query, top_k=top_k)
+        return response["summary"]
 
 # Example usage
 if __name__ == "__main__":

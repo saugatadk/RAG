@@ -6,3 +6,8 @@ pymupdf
 sentence-transformers
 faiss-cpu
 chromadb
+requests
+python-dotenv
+fastapi
+uvicorn
+python-multipart
