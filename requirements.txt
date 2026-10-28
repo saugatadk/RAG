@@ -11,7 +11,7 @@ python-dotenv
 fastapi
 uvicorn
 python-multipart
-gradio>=4.0.0
+gradio>=5.0.0,<6.0.0
 openpyxl
 python-docx
 huggingface-hub<2.0

@@ -1,8 +1,8 @@
-import os
-import uvicorn
-from src.api import app
+from src.ui import create_ui
+
+demo = create_ui()
 
 if __name__ == "__main__":
-    # Hugging Face Spaces routes traffic to port 7860 by default
-    port = int(os.environ.get("PORT", 7860))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    # In Hugging Face Spaces (Gradio SDK), demo.launch() automatically detects
+    # the environment and binds cleanly to the expected host and port.
+    demo.launch()
