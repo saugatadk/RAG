@@ -14,30 +14,40 @@ class RAGSearch:
         persist_dir: Optional[str] = None,
         data_dir: Optional[str] = None,
         embedding_model: str = "all-MiniLM-L6-v2",
-        llm_model: str = "openai/gpt-oss-120b:free",
+        llm_model: Optional[str] = None,
         base_url: str = "https://openrouter.ai/api/v1/chat/completions",
         timeout: int = 60,
     ):
         self.persist_dir = str(resolve_path(persist_dir, "data/faiss_store"))
         self.data_dir = str(resolve_path(data_dir, "data"))
         self.vectorstore = FaissVectorStore(self.persist_dir, embedding_model)
-        # Load or build vectorstore
+        # Load or build vectorstore if documents exist
         faiss_path = os.path.join(self.persist_dir, "faiss.index")
         meta_path = os.path.join(self.persist_dir, "metadata.pkl")
         if not (os.path.exists(faiss_path) and os.path.exists(meta_path)):
             docs = load_all_documents(self.data_dir)
-            self.vectorstore.build_from_documents(docs)
+            if docs:
+                self.vectorstore.build_from_documents(docs)
+            else:
+                print(f"[INFO] No documents found in {self.data_dir} to build initial index. Ready for uploads.")
         else:
             self.vectorstore.load()
-        self.llm_model = llm_model
+        self.llm_model = llm_model or os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3.5-lightning:free")
         self.base_url = base_url
         self.timeout = timeout
         self.api_key = os.getenv("OPENROUTER_API_KEY")
         if not self.api_key:
-            raise ValueError("OPENROUTER_API_KEY is required. Set it in your environment.")
-        print(f"[INFO] OpenRouter LLM initialized: {llm_model}")
+            print("[WARNING] OPENROUTER_API_KEY is not set. Add it in Hugging Face Space Settings > Secrets or .env file.")
+        else:
+            print(f"[INFO] OpenRouter LLM initialized: {self.llm_model}")
 
     def _openrouter_chat(self, prompt: str, max_tokens: int = 1024) -> str:
+        api_key = os.getenv("OPENROUTER_API_KEY") or self.api_key
+        if not api_key:
+            return (
+                "⚠️ OPENROUTER_API_KEY is missing. "
+                "Please configure OPENROUTER_API_KEY in your Hugging Face Space Settings > Secrets (or in your local .env file)."
+            )
         payload = {
             "model": self.llm_model,
             "messages": [{"role": "user", "content": prompt}],
@@ -45,18 +55,21 @@ class RAGSearch:
             "max_tokens": max_tokens,
         }
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
-        response = requests.post(
-            self.base_url,
-            headers=headers,
-            json=payload,
-            timeout=self.timeout,
-        )
-        response.raise_for_status()
-        data = response.json()
-        return data["choices"][0]["message"]["content"]
+        try:
+            response = requests.post(
+                self.base_url,
+                headers=headers,
+                json=payload,
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data["choices"][0]["message"]["content"]
+        except requests.exceptions.RequestException as e:
+            return f"⚠️ Error communicating with OpenRouter LLM: {str(e)}"
 
     def search_with_context(self, query: str, top_k: int = 5) -> Dict[str, Any]:
         results = self.vectorstore.query(query, top_k=top_k)

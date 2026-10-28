@@ -96,8 +96,9 @@ class FaissVectorStore:
 
     def query(self, query_text: str, top_k: int = 5):
         print(f"[INFO] Querying vector store for: '{query_text}'")
-        if self.index is None:
-            raise RuntimeError("Vector store is empty. Call build_from_documents() or load() first.")
+        if self.index is None or getattr(self.index, "ntotal", 0) == 0:
+            print("[WARN] Vector store is empty.")
+            return []
         query_emb = self.model.encode([query_text]).astype("float32")
         return self.search(query_emb, top_k=top_k)
 

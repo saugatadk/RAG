@@ -12,9 +12,13 @@ from src.search import RAGSearch
 from src.vectorstore import FaissVectorStore
 
 
+import gradio as gr
+from src.ui import create_ui
+
 ALLOWED_EXTENSIONS = {".pdf", ".txt", ".csv", ".xlsx", ".docx", ".json"}
 
 app = FastAPI(title="RAG API")
+
 
 data_dir = resolve_path(None, "data")
 upload_dir = resolve_path("data/uploads", "data/uploads")
@@ -104,3 +108,8 @@ def query(request: QueryRequest) -> QueryResponse:
         rag = _get_rag()
         result = rag.search_with_context(request.query, top_k=request.top_k)
     return QueryResponse(query=request.query, summary=result["summary"], results=result["results"])
+
+
+# Mount the interactive Gradio UI at root "/"
+app = gr.mount_gradio_app(app, create_ui(), path="/")
+
