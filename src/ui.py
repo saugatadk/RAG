@@ -32,7 +32,11 @@ def get_rag() -> RAGSearch:
 
 
 @gpu_decorator
-def query_rag(message: str, history: List[Tuple[str, str]], top_k: int) -> Tuple[str, str]:
+def query_rag(
+    message: str,
+    history: List[Tuple[str, str]],
+    top_k: int,
+) -> Tuple[str, str]:
     if not message.strip():
         return "", "Please enter a valid question."
 
@@ -59,16 +63,63 @@ def query_rag(message: str, history: List[Tuple[str, str]], top_k: int) -> Tuple
     return summary, citations_md
 
 
-@gpu_decorator
-def upload_and_index(files: List[Any]) -> str:
+def _render_progress_html(percent: int, status_text: str, is_done: bool = False, is_error: bool = False) -> str:
+    if is_error:
+        accent_color = "#ef4444"
+        bar_bg = "linear-gradient(90deg, #ef4444, #dc2626)"
+        box_bg = "rgba(239, 68, 68, 0.1)"
+        box_border = "rgba(239, 68, 68, 0.35)"
+        text_color = "#ef4444"
+    elif is_done:
+        accent_color = "#10b981"
+        bar_bg = "linear-gradient(90deg, #10b981, #059669)"
+        box_bg = "rgba(16, 185, 129, 0.1)"
+        box_border = "rgba(16, 185, 129, 0.35)"
+        text_color = "#10b981"
+    else:
+        accent_color = "#3b82f6"
+        bar_bg = "linear-gradient(90deg, #3b82f6, #6366f1)"
+        box_bg = "rgba(59, 130, 246, 0.1)"
+        box_border = "rgba(59, 130, 246, 0.35)"
+        text_color = "var(--body-text-color, #1e293b)"
+
+    return f"""
+    <div style="background: {box_bg}; border: 1.5px solid {box_border}; border-radius: 10px; padding: 14px 18px; margin: 12px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span class="progress-text" style="font-weight: 700; font-size: 0.95rem; color: {text_color}; display: flex; align-items: center; gap: 6px;">
+                {status_text}
+            </span>
+            <span style="font-weight: 800; font-size: 0.95rem; color: {accent_color};">
+                {percent}%
+            </span>
+        </div>
+        <div style="width: 100%; background: rgba(156, 163, 175, 0.25); border-radius: 9999px; height: 10px; overflow: hidden;">
+            <div style="width: {percent}%; background: {bar_bg}; height: 100%; border-radius: 9999px; transition: width 0.3s ease;"></div>
+        </div>
+    </div>
+    """
+
+
+def start_upload_progress(files: List[Any]) -> str:
     if not files:
-        return "⚠️ No files selected."
+        return _render_progress_html(0, "⚠️ No files selected. Please select documents to upload.", is_done=False, is_error=True)
+    return _render_progress_html(10, "⏳ Uploading documents and preparing storage...", is_done=False)
+
+
+@gpu_decorator
+def upload_and_index(files: List[Any]):
+    if not files:
+        yield _render_progress_html(0, "⚠️ No files selected. Please select documents to upload.", is_done=False, is_error=True)
+        return
+
+    yield _render_progress_html(15, "⏳ Uploading documents and preparing storage...", is_done=False)
 
     upload_dir.mkdir(parents=True, exist_ok=True)
     saved_count = 0
     allowed = {".pdf", ".txt", ".csv", ".xlsx", ".docx", ".json"}
 
-    for temp_file in files:
+    total_files = len(files)
+    for idx, temp_file in enumerate(files, 1):
         file_path = getattr(temp_file, "name", None) or str(temp_file)
         path_obj = Path(file_path)
         if path_obj.suffix.lower() not in allowed:
@@ -80,22 +131,33 @@ def upload_and_index(files: List[Any]) -> str:
             counter += 1
         shutil.copy2(file_path, dest)
         saved_count += 1
+        pct = 15 + int(30 * (idx / total_files))
+        yield _render_progress_html(pct, f"⏳ Saving {path_obj.name} ({saved_count}/{total_files})...", is_done=False)
 
     if saved_count == 0:
-        return "⚠️ No valid documents with supported formats (.pdf, .txt, .csv, .xlsx, .docx, .json) were found."
+        yield _render_progress_html(0, "⚠️ No valid documents with supported formats (.pdf, .txt, .csv, .xlsx, .docx, .json) found.", is_done=False, is_error=True)
+        return
 
     # Rebuild index
+    yield _render_progress_html(55, "⏳ Extracting text from documents and chunking...", is_done=False)
     docs = load_all_documents(str(data_dir))
     if not docs:
-        return f"Saved {saved_count} file(s), but no valid text could be extracted."
+        yield _render_progress_html(0, f"⚠️ Saved {saved_count} file(s), but no valid text could be extracted.", is_done=False, is_error=True)
+        return
 
+    yield _render_progress_html(80, f"⏳ Generating embeddings for {len(docs)} document chunks...", is_done=False)
     store = FaissVectorStore(persist_dir=str(persist_dir))
     store.build_from_documents(docs)
 
+    yield _render_progress_html(95, "⏳ Reloading search engine and finalizing index...", is_done=False)
     global _rag_instance
     _rag_instance = RAGSearch(persist_dir=str(persist_dir), data_dir=str(data_dir))
 
-    return f"✅ Successfully uploaded {saved_count} file(s) and reindexed {len(docs)} document chunks!"
+    yield _render_progress_html(
+        100,
+        f"✅ Successfully uploaded {saved_count} file(s) and reindexed {len(docs)} document chunks.",
+        is_done=True,
+    )
 
 
 def get_index_status() -> str:
@@ -111,6 +173,7 @@ def create_ui() -> gr.Blocks:
     custom_css = """
     .gradio-container { max-width: 1000px !important; margin: auto !important; }
     .status-box { font-size: 0.9em; padding: 8px 12px; border-radius: 6px; }
+    .dark .progress-text { color: #f8fafc !important; }
     """
 
     with gr.Blocks(title="Document RAG Assistant") as demo:
@@ -124,7 +187,7 @@ def create_ui() -> gr.Blocks:
         with gr.Row():
             status_markdown = gr.Markdown(value=get_index_status())
             refresh_btn = gr.Button("🔄 Refresh Status", size="sm")
-            refresh_btn.click(fn=get_index_status, inputs=[], outputs=[status_markdown])
+            refresh_btn.click(fn=get_index_status, inputs=[], outputs=[status_markdown], show_progress="hidden")
 
         with gr.Tabs():
             with gr.Tab("💬 Ask & Search"):
@@ -157,11 +220,13 @@ def create_ui() -> gr.Blocks:
                     fn=query_rag,
                     inputs=[query_input, gr.State([]), top_k_slider],
                     outputs=[answer_output, citations_output],
+                    show_progress="hidden",
                 )
                 query_input.submit(
                     fn=query_rag,
                     inputs=[query_input, gr.State([]), top_k_slider],
                     outputs=[answer_output, citations_output],
+                    show_progress="hidden",
                 )
 
             with gr.Tab("📂 Upload & Manage Documents"):
@@ -178,16 +243,23 @@ def create_ui() -> gr.Blocks:
                     file_types=[".pdf", ".txt", ".csv", ".xlsx", ".docx", ".json"],
                 )
                 upload_btn = gr.Button("📤 Upload & Rebuild Index", variant="primary")
-                upload_status = gr.Markdown(value="")
+                upload_status = gr.HTML(value="")
 
                 upload_btn.click(
+                    fn=start_upload_progress,
+                    inputs=[file_upload],
+                    outputs=[upload_status],
+                    show_progress="hidden",
+                ).then(
                     fn=upload_and_index,
                     inputs=[file_upload],
                     outputs=[upload_status],
+                    show_progress="hidden",
                 ).then(
                     fn=get_index_status,
                     inputs=[],
                     outputs=[status_markdown],
+                    show_progress="hidden",
                 )
 
         gr.Markdown(
@@ -196,5 +268,7 @@ def create_ui() -> gr.Blocks:
             *API documentation & REST endpoints are available at [`/docs`](/docs). Built for Hugging Face Spaces.*
             """
         )
+
+        demo.queue()
 
     return demo
