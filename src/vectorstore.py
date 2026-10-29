@@ -4,31 +4,28 @@ import numpy as np
 import pickle
 from typing import List, Any, Optional
 from sentence_transformers import SentenceTransformer
-from src.embedding import EmbeddingPipeline
-from src.dataloader import load_all_documents
+from src.embedding import EmbeddingPipeline, get_shared_embedding_model
 from src.paths import resolve_path
 
 class FaissVectorStore:
     def __init__(self, persist_dir: Optional[str] = None, embedding_model: str = "all-MiniLM-L6-v2", chunk_size: int = 1000, chunk_overlap: int = 200):
-        persist_path = resolve_path(persist_dir, "data/faiss_store")
-        self.persist_dir = str(persist_path)
-        os.makedirs(self.persist_dir, exist_ok=True)
+        self.persist_dir = str(resolve_path(persist_dir, "data/faiss_store")) if persist_dir else None
+        if self.persist_dir:
+            os.makedirs(self.persist_dir, exist_ok=True)
         self.index = None
         self.metadata = []
         self.embedding_model = embedding_model
-        self.model = SentenceTransformer(embedding_model)
+        self.model = get_shared_embedding_model(embedding_model)
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
-        print(f"[INFO] Loaded embedding model: {embedding_model}")
 
-    def build_from_documents(self, documents: List[Any]):
-        print(f"[INFO] Building vector store from {len(documents)} raw documents...")
+    def add_documents(self, documents: List[Any]) -> int:
         if not documents:
-            raise ValueError("No documents available to build the index.")
-        self.index = None
-        self.metadata = []
-        emb_pipe = EmbeddingPipeline(model_name=self.embedding_model, chunk_size=self.chunk_size, chunk_overlap=self.chunk_overlap)
+            return 0
+        emb_pipe = EmbeddingPipeline(model=self.model, chunk_size=self.chunk_size, chunk_overlap=self.chunk_overlap)
         chunks = emb_pipe.chunk_documents(documents)
+        if not chunks:
+            return 0
         embeddings = emb_pipe.embed_chunks(chunks)
         metadatas = [
             {
@@ -38,9 +35,18 @@ class FaissVectorStore:
             }
             for chunk in chunks
         ]
-        self.add_embeddings(np.array(embeddings).astype('float32'), metadatas)
-        self.save()
-        print(f"[INFO] Vector store built and saved to {self.persist_dir}")
+        self.add_embeddings(np.array(embeddings).astype("float32"), metadatas)
+        if self.persist_dir:
+            self.save()
+        return len(chunks)
+
+    def clear(self):
+        self.index = None
+        self.metadata = []
+
+    def build_from_documents(self, documents: List[Any]):
+        self.clear()
+        self.add_documents(documents)
 
     def add_embeddings(self, embeddings: np.ndarray, metadatas: List[Any] = None):
         if embeddings.size == 0:
@@ -58,6 +64,8 @@ class FaissVectorStore:
         print(f"[INFO] Added {embeddings.shape[0]} vectors to Faiss index (cosine).")
 
     def save(self):
+        if not self.persist_dir or self.index is None:
+            return
         faiss_path = os.path.join(self.persist_dir, "faiss.index")
         meta_path = os.path.join(self.persist_dir, "metadata.pkl")
         faiss.write_index(self.index, faiss_path)
@@ -66,18 +74,23 @@ class FaissVectorStore:
         print(f"[INFO] Saved Faiss index and metadata to {self.persist_dir}")
 
     def load(self):
+        if not self.persist_dir:
+            return
         faiss_path = os.path.join(self.persist_dir, "faiss.index")
         meta_path = os.path.join(self.persist_dir, "metadata.pkl")
-        self.index = faiss.read_index(faiss_path)
-        with open(meta_path, "rb") as f:
-            self.metadata = pickle.load(f)
-        print(f"[INFO] Loaded Faiss index and metadata from {self.persist_dir}")
+        if os.path.exists(faiss_path) and os.path.exists(meta_path):
+            self.index = faiss.read_index(faiss_path)
+            with open(meta_path, "rb") as f:
+                self.metadata = pickle.load(f)
+            print(f"[INFO] Loaded Faiss index and metadata from {self.persist_dir}")
 
     def search(self, query_embedding: np.ndarray, top_k: int = 5):
-        # Ensure the query is L2-normalized so IP == cosine similarity
+        if self.index is None or getattr(self.index, "ntotal", 0) == 0:
+            return []
         query_embedding = np.ascontiguousarray(query_embedding, dtype="float32")
         faiss.normalize_L2(query_embedding)
-        D, I = self.index.search(query_embedding, top_k)
+        k = min(int(top_k), self.index.ntotal)
+        D, I = self.index.search(query_embedding, k)
         results = []
         for idx, score in zip(I[0], D[0]):
             if idx == -1:
@@ -108,4 +121,4 @@ if __name__ == "__main__":
     store = FaissVectorStore()
     store.build_from_documents(docs)
     store.load()
-    print(store.query("What is EventX?", top_k=3))
+    print(store.query("What is EventX?", top_k=3)) 

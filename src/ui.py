@@ -1,7 +1,7 @@
 import os
 import shutil
 from pathlib import Path
-from typing import List, Tuple, Any
+from typing import List, Tuple, Any, Optional
 
 try:
     import spaces
@@ -13,35 +13,23 @@ except (ImportError, Exception):
 import gradio as gr
 
 from src.paths import resolve_path
-from src.dataloader import load_all_documents
+from src.dataloader import load_file
 from src.vectorstore import FaissVectorStore
 from src.search import RAGSearch
 
-data_dir = resolve_path(None, "data")
 upload_dir = resolve_path("data/uploads", "data/uploads")
-persist_dir = resolve_path(None, "data/faiss_store")
-
-_rag_instance = None
-
-
-def get_rag() -> RAGSearch:
-    global _rag_instance
-    if _rag_instance is None:
-        _rag_instance = RAGSearch(persist_dir=str(persist_dir), data_dir=str(data_dir))
-    return _rag_instance
 
 
 @gpu_decorator
 def query_rag(
     message: str,
-    history: List[Tuple[str, str]],
+    session_rag: RAGSearch,
     top_k: int,
 ) -> Tuple[str, str]:
     if not message.strip():
         return "", "Please enter a valid question."
 
-    rag = get_rag()
-    res = rag.search_with_context(message, top_k=int(top_k))
+    res = session_rag.search_with_context(message, top_k=int(top_k))
     summary = res.get("summary", "No response generated.")
     results = res.get("results", [])
 
@@ -107,18 +95,19 @@ def start_upload_progress(files: List[Any]) -> str:
 
 
 @gpu_decorator
-def upload_and_index(files: List[Any]):
+def upload_and_index(files: List[Any], session_rag: RAGSearch):
     if not files:
-        yield _render_progress_html(0, "⚠️ No files selected. Please select documents to upload.", is_done=False, is_error=True)
+        yield _render_progress_html(0, "⚠️ No files selected. Please select documents to upload.", is_done=False, is_error=True), session_rag
         return
 
-    yield _render_progress_html(15, "⏳ Uploading documents and preparing storage...", is_done=False)
+    yield _render_progress_html(15, "⏳ Uploading documents and preparing storage...", is_done=False), session_rag
 
     upload_dir.mkdir(parents=True, exist_ok=True)
-    saved_count = 0
     allowed = {".pdf", ".txt", ".csv", ".xlsx", ".docx", ".json"}
-
     total_files = len(files)
+    new_docs = []
+    saved_count = 0
+
     for idx, temp_file in enumerate(files, 1):
         file_path = getattr(temp_file, "name", None) or str(temp_file)
         path_obj = Path(file_path)
@@ -131,42 +120,35 @@ def upload_and_index(files: List[Any]):
             counter += 1
         shutil.copy2(file_path, dest)
         saved_count += 1
-        pct = 15 + int(30 * (idx / total_files))
-        yield _render_progress_html(pct, f"⏳ Saving {path_obj.name} ({saved_count}/{total_files})...", is_done=False)
 
-    if saved_count == 0:
-        yield _render_progress_html(0, "⚠️ No valid documents with supported formats (.pdf, .txt, .csv, .xlsx, .docx, .json) found.", is_done=False, is_error=True)
+        loaded = load_file(str(dest))
+        if loaded:
+            new_docs.extend(loaded)
+
+        pct = 15 + int(35 * (idx / total_files))
+        yield _render_progress_html(pct, f"⏳ Processed {path_obj.name} ({saved_count}/{total_files})...", is_done=False), session_rag
+
+    if not new_docs:
+        yield _render_progress_html(0, "⚠️ No valid text could be extracted from uploaded document(s).", is_done=False, is_error=True), session_rag
         return
 
-    # Rebuild index
-    yield _render_progress_html(55, "⏳ Extracting text from documents and chunking...", is_done=False)
-    docs = load_all_documents(str(data_dir))
-    if not docs:
-        yield _render_progress_html(0, f"⚠️ Saved {saved_count} file(s), but no valid text could be extracted.", is_done=False, is_error=True)
-        return
+    yield _render_progress_html(75, f"⏳ Generating embeddings for {len(new_docs)} document sections...", is_done=False), session_rag
+    session_rag.vectorstore.add_documents(new_docs)
 
-    yield _render_progress_html(80, f"⏳ Generating embeddings for {len(docs)} document chunks...", is_done=False)
-    store = FaissVectorStore(persist_dir=str(persist_dir))
-    store.build_from_documents(docs)
-
-    yield _render_progress_html(95, "⏳ Reloading search engine and finalizing index...", is_done=False)
-    global _rag_instance
-    _rag_instance = RAGSearch(persist_dir=str(persist_dir), data_dir=str(data_dir))
-
+    total_chunks = session_rag.vectorstore.index.ntotal if session_rag.vectorstore.index else 0
     yield _render_progress_html(
         100,
-        f"✅ Successfully uploaded {saved_count} file(s) and reindexed {len(docs)} document chunks.",
+        f"✅ Successfully uploaded {saved_count} file(s) and indexed {total_chunks} document chunks in this session.",
         is_done=True,
-    )
+    ), session_rag
 
 
-def get_index_status() -> str:
-    faiss_file = persist_dir / "faiss.index"
-    meta_file = persist_dir / "metadata.pkl"
-    if faiss_file.exists() and meta_file.exists():
-        size_kb = faiss_file.stat().st_size / 1024
-        return f"🟢 **FAISS Index active** (`faiss.index`: {size_kb:.1f} KB)"
-    return "🟡 **Index not found** — upload files or run ingestion to create."
+def get_index_status(session_rag: Optional[RAGSearch] = None) -> str:
+    if session_rag is None or session_rag.vectorstore.index is None or getattr(session_rag.vectorstore.index, "ntotal", 0) == 0:
+        return "🟡 **Session Index empty** — upload documents below to begin asking questions."
+    sources = {Path(m.get("source", "")).name for m in session_rag.vectorstore.metadata if m.get("source")}
+    chunks = session_rag.vectorstore.index.ntotal
+    return f"🟢 **Session Index active** ({len(sources)} file(s), {chunks} document chunks indexed)"
 
 
 def create_ui() -> gr.Blocks:
@@ -177,6 +159,8 @@ def create_ui() -> gr.Blocks:
     """
 
     with gr.Blocks(title="Document RAG Assistant") as demo:
+        session_rag = gr.State(RAGSearch)
+
         gr.Markdown(
             """
             # 📚 Document RAG Assistant
@@ -187,7 +171,7 @@ def create_ui() -> gr.Blocks:
         with gr.Row():
             status_markdown = gr.Markdown(value=get_index_status())
             refresh_btn = gr.Button("🔄 Refresh Status", size="sm")
-            refresh_btn.click(fn=get_index_status, inputs=[], outputs=[status_markdown], show_progress="hidden")
+            refresh_btn.click(fn=get_index_status, inputs=[session_rag], outputs=[status_markdown], show_progress="hidden")
 
         with gr.Tabs():
             with gr.Tab("💬 Ask & Search"):
@@ -195,7 +179,7 @@ def create_ui() -> gr.Blocks:
                     with gr.Column(scale=3):
                         query_input = gr.Textbox(
                             label="Your Question",
-                            placeholder="e.g., What are the frontend and backend technologies used in EventX?",
+                            placeholder="e.g., What are the key points in the uploaded document?",
                             lines=2,
                         )
                     with gr.Column(scale=1):
@@ -218,13 +202,13 @@ def create_ui() -> gr.Blocks:
 
                 ask_btn.click(
                     fn=query_rag,
-                    inputs=[query_input, gr.State([]), top_k_slider],
+                    inputs=[query_input, session_rag, top_k_slider],
                     outputs=[answer_output, citations_output],
                     show_progress="hidden",
                 )
                 query_input.submit(
                     fn=query_rag,
-                    inputs=[query_input, gr.State([]), top_k_slider],
+                    inputs=[query_input, session_rag, top_k_slider],
                     outputs=[answer_output, citations_output],
                     show_progress="hidden",
                 )
@@ -234,7 +218,7 @@ def create_ui() -> gr.Blocks:
                     """
                     ### Upload Documents
                     Supported formats: **PDF, TXT, CSV, XLSX, DOCX, JSON**.
-                    Files will be added to the document repository and automatically embedded into the FAISS index.
+                    Files will be indexed exclusively for this session and available immediately for search.
                     """
                 )
                 file_upload = gr.File(
@@ -252,12 +236,12 @@ def create_ui() -> gr.Blocks:
                     show_progress="hidden",
                 ).then(
                     fn=upload_and_index,
-                    inputs=[file_upload],
-                    outputs=[upload_status],
+                    inputs=[file_upload, session_rag],
+                    outputs=[upload_status, session_rag],
                     show_progress="hidden",
                 ).then(
                     fn=get_index_status,
-                    inputs=[],
+                    inputs=[session_rag],
                     outputs=[status_markdown],
                     show_progress="hidden",
                 )

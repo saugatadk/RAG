@@ -11,25 +11,17 @@ load_dotenv()
 class RAGSearch:
     def __init__(
         self,
+        vectorstore: Optional[FaissVectorStore] = None,
         persist_dir: Optional[str] = None,
         data_dir: Optional[str] = None,
         embedding_model: str = "all-MiniLM-L6-v2",
         llm_model: Optional[str] = None,
         timeout: int = 60,
     ):
-        self.persist_dir = str(resolve_path(persist_dir, "data/faiss_store"))
-        self.data_dir = str(resolve_path(data_dir, "data"))
-        self.vectorstore = FaissVectorStore(self.persist_dir, embedding_model)
-        # Load or build vectorstore if documents exist
-        faiss_path = os.path.join(self.persist_dir, "faiss.index")
-        meta_path = os.path.join(self.persist_dir, "metadata.pkl")
-        if not (os.path.exists(faiss_path) and os.path.exists(meta_path)):
-            docs = load_all_documents(self.data_dir)
-            if docs:
-                self.vectorstore.build_from_documents(docs)
-            else:
-                print(f"[INFO] No documents found in {self.data_dir} to build initial index. Ready for uploads.")
-        else:
+        self.persist_dir = str(resolve_path(persist_dir, "data/faiss_store")) if persist_dir else None
+        self.data_dir = str(resolve_path(data_dir, "data")) if data_dir else None
+        self.vectorstore = vectorstore or FaissVectorStore(persist_dir=self.persist_dir, embedding_model=embedding_model)
+        if self.persist_dir:
             self.vectorstore.load()
 
         self.timeout = timeout
@@ -127,6 +119,11 @@ class RAGSearch:
             )
 
     def search_with_context(self, query: str, top_k: int = 5) -> Dict[str, Any]:
+        if self.vectorstore.index is None or getattr(self.vectorstore.index, "ntotal", 0) == 0:
+            return {
+                "summary": "No documents have been uploaded in this session yet. Please upload documents in the 'Upload & Manage Documents' tab first.",
+                "results": [],
+            }
         results = self.vectorstore.query(query, top_k=top_k)
         contexts: List[Dict[str, Any]] = []
         for result in results:
@@ -141,7 +138,7 @@ class RAGSearch:
             )
         context_text = "\n\n".join([c["text"] for c in contexts if c["text"]])
         if not context_text:
-            return {"summary": "No relevant documents found.", "results": contexts}
+            return {"summary": "No relevant context found in uploaded session documents.", "results": contexts}
         prompt = f"""Summarize the following context for the query: '{query}'\n\nContext:\n{context_text}\n\nSummary:"""
         summary = self._chat(prompt)
         return {"summary": summary, "results": contexts}
