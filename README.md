@@ -194,7 +194,7 @@ curl -X POST "http://127.0.0.1:7860/query" \
 
 ## Project Role & Contributions
 
-This is a **solo project** engineered from scratch by **Saugata Adhikari**:
+This is a **solo project** engineered from scratch by **Saugat Adhikari**:
 
 - Designed and implemented the multi-format ingestion layer ([src/dataloader.py](src/dataloader.py)) supporting 6 file types.
 - Integrated `sentence-transformers` with FAISS (`IndexFlatIP`) using L2 normalization to enable cosine similarity search ([src/vectorstore.py](src/vectorstore.py)).
@@ -207,8 +207,7 @@ This is a **solo project** engineered from scratch by **Saugata Adhikari**:
 ## Challenges & Learnings
 
 - **FAISS Cosine Distance Calibration**: Standard FAISS `IndexFlatL2` calculates squared Euclidean distance, which distorted similarity scoring on variable-length text chunks. Resolved this by switching to `IndexFlatIP` and applying `faiss.normalize_L2` to both chunk and query embeddings to achieve cosine similarity within $[-1, 1]$.
-- **Cross-Session Vector Isolation**: Default server-level global vector indices leaked documents between concurrent browser tabs. Refactored the architecture to instantiate and maintain `FaissVectorStore` instances inside Gradio's `gr.State()`, ensuring session independence.
-- **Credential Leak Prevention**: Standard `requests.raise_for_status()` embedded URL query parameters (including API keys) into exception strings during HTTP 429 rate-limiting events. Replaced URL key parameters with the `x-goog-api-key` header and implemented sanitized custom status code handling.
+
 - **Embedding Pipeline Memory Management**: Reloading the 384-dimensional SentenceTransformer model per upload caused memory spikes and latency. Implemented an in-memory singleton pattern (`get_shared_embedding_model`) to keep weights warm across sessions without memory duplication.
 
 ---
@@ -218,16 +217,6 @@ This is a **solo project** engineered from scratch by **Saugata Adhikari**:
 - [ ] Add query semantic caching via a secondary FAISS index to serve repeated questions in sub-10ms with zero token cost.
 - [ ] Implement document access control (RBAC) metadata tagging to restrict chunk retrieval based on user roles.
 - [ ] Add input guardrails to detect and block prompt injection patterns prior to vector lookup.
-- [ ] Implement dynamic query complexity routing between Gemini Flash-Lite and Gemini Pro.
-- [ ] Add an automated evaluation test suite calculating retrieval faithfulness and context precision before deployment.
-
----
-
-## Team & Acknowledgements
-
-- **Developer**: Saugata Adhikari ([@saugatadk](https://github.com/saugatadk))
-- **Affiliation**: Independent Portfolio Project
-- **Acknowledgements**: [ADD: Any mentor, course reference, or colleague you wish to acknowledge, e.g. open-source communities, Hugging Face, Google AI Studio]
 
 ---
 
