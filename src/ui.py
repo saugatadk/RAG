@@ -25,9 +25,9 @@ def query_rag(
     message: str,
     session_rag: RAGSearch,
     top_k: int,
-) -> Tuple[str, str]:
+) -> Tuple[str, str, Any]:
     if not message.strip():
-        return "", "Please enter a valid question."
+        return "", "Please enter a valid question.", gr.update(value="🔍 Search & Answer")
 
     res = session_rag.search_with_context(message, top_k=int(top_k))
     summary = res.get("summary", "No response generated.")
@@ -48,7 +48,22 @@ def query_rag(
                 text = text[:300] + "..."
             citations_md += f"**{idx}. `{source}`{page_str}** — _{score_str}_\n> {text}\n\n"
 
-    return summary, citations_md
+    return summary, citations_md, gr.update(value="🔍 Search & Answer")
+
+
+def start_search_loading(message: str) -> Tuple[str, str, Any]:
+    if not message.strip():
+        return "", "Please enter a valid question.", gr.update(value="🔍 Search & Answer")
+    loading_html = """
+    <div style="display: flex; align-items: center; gap: 12px; padding: 14px 18px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 10px; color: var(--body-text-color, #2563eb);">
+        <svg style="animation: spin 1s linear infinite; width: 22px; height: 22px; flex-shrink: 0;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle style="opacity: 0.25;" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path style="opacity: 0.75;" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <span style="font-weight: 600; font-size: 0.95rem;">Searching document context & generating response...</span>
+    </div>
+    """
+    return loading_html, "*⏳ Retrieving matching citations...*", gr.update(value="⏳ Searching...")
 
 
 def _render_progress_html(percent: int, status_text: str, is_done: bool = False, is_error: bool = False) -> str:
@@ -156,6 +171,7 @@ def create_ui() -> gr.Blocks:
     .gradio-container { max-width: 1000px !important; margin: auto !important; }
     .status-box { font-size: 0.9em; padding: 8px 12px; border-radius: 6px; }
     .dark .progress-text { color: #f8fafc !important; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     """
 
     with gr.Blocks(title="Document RAG Assistant") as demo:
@@ -201,15 +217,25 @@ def create_ui() -> gr.Blocks:
                         )
 
                 ask_btn.click(
+                    fn=start_search_loading,
+                    inputs=[query_input],
+                    outputs=[answer_output, citations_output, ask_btn],
+                    show_progress="hidden",
+                ).then(
                     fn=query_rag,
                     inputs=[query_input, session_rag, top_k_slider],
-                    outputs=[answer_output, citations_output],
+                    outputs=[answer_output, citations_output, ask_btn],
                     show_progress="hidden",
                 )
                 query_input.submit(
+                    fn=start_search_loading,
+                    inputs=[query_input],
+                    outputs=[answer_output, citations_output, ask_btn],
+                    show_progress="hidden",
+                ).then(
                     fn=query_rag,
                     inputs=[query_input, session_rag, top_k_slider],
-                    outputs=[answer_output, citations_output],
+                    outputs=[answer_output, citations_output, ask_btn],
                     show_progress="hidden",
                 )
 

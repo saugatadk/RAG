@@ -9,8 +9,6 @@
 
 A high-performance Retrieval-Augmented Generation (RAG) assistant designed for fast document ingestion, semantic search, and AI-powered context synthesis. Powered by **Google Gemini 3.1 Flash-Lite**, **Sentence-Transformers**, **FAISS Vector Search**, **FastAPI**, and **Gradio**.
 
-Built for zero-cost deployment on **Hugging Face Spaces** (Free Tier: 2 vCPU · 16 GB RAM) and local environments.
-
 ---
 
 ## 🌟 Key Features
@@ -80,8 +78,6 @@ GEMINI_API_KEY=your_gemini_api_key_here
 GEMINI_MODEL=gemini-3.1-flash-lite
 ```
 
-*(Optional fallback: `OPENROUTER_API_KEY=your_openrouter_key`)*
-
 ### 4. Run the Application
 
 #### Option A: Gradio Web UI (Recommended)
@@ -100,25 +96,6 @@ Access the interactive Swagger API documentation at **[http://localhost:7860/doc
 ```bash
 docker build -t document-rag .
 docker run -p 7860:7860 --env-file .env document-rag
-```
-
----
-
-## ☁️ Deployment to Hugging Face Spaces
-
-This repository is pre-configured for one-click deployment to Hugging Face Spaces.
-
-1. Create a new Space at **[huggingface.co/new-space](https://huggingface.co/new-space)**:
-   - **Space SDK:** `Gradio`
-   - **Hardware Tier:** `Free` (2 vCPU · 16 GB RAM)
-2. Add your API key in **Settings > Variables and secrets**:
-   - Secret Name: `GEMINI_API_KEY`
-   - Secret Value: `your-gemini-api-key`
-3. Push to Hugging Face:
-
-```bash
-git remote add space https://huggingface.co/spaces/<YOUR_HF_USERNAME>/<YOUR_SPACE_NAME>
-git push space main
 ```
 
 ---
