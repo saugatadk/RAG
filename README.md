@@ -1,23 +1,13 @@
----
-title: Document RAG Assistant
-emoji: 📚
-colorFrom: indigo
-colorTo: blue
-sdk: gradio
-app_file: app.py
-pinned: false
----
-
 # 📚 Document RAG Assistant
 
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![Gradio](https://img.shields.io/badge/Gradio-6.31.0-orange.svg?logo=gradio&logoColor=white)](https://gradio.app/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![FAISS](https://img.shields.io/badge/FAISS-Vector%20Search-green.svg)](https://github.com/facebookresearch/faiss)
-[![Gemini](https://img.shields.io/badge/Google%20Gemini-2.5--Flash-4285F4.svg?logo=google&logoColor=white)](https://ai.google.dev/)
+[![Gemini](https://img.shields.io/badge/Google%20Gemini-3.1--Flash--Lite-4285F4.svg?logo=google&logoColor=white)](https://ai.google.dev/)
 [![Hugging Face Spaces](https://img.shields.io/badge/Hugging%20Face-Spaces-yellow.svg?logo=huggingface&logoColor=white)](https://huggingface.co/spaces)
 
-A high-performance Retrieval-Augmented Generation (RAG) assistant designed for fast document ingestion, semantic search, and AI-powered context synthesis. Powered by **Google Gemini 2.5 Flash**, **Sentence-Transformers**, **FAISS Vector Search**, **FastAPI**, and **Gradio**.
+A high-performance Retrieval-Augmented Generation (RAG) assistant designed for fast document ingestion, semantic search, and AI-powered context synthesis. Powered by **Google Gemini 3.1 Flash-Lite**, **Sentence-Transformers**, **FAISS Vector Search**, **FastAPI**, and **Gradio**.
 
 Built for zero-cost deployment on **Hugging Face Spaces** (Free Tier: 2 vCPU · 16 GB RAM) and local environments.
 
@@ -52,7 +42,7 @@ flowchart LR
         QEmbed --> Search[Cosine Similarity Search]
         FAISS -. Chunks .-> Search
         Search --> ContextFilter[Filter Top-k Chunks]
-        ContextFilter --> LLM[Google Gemini 2.5 Flash]
+        ContextFilter --> LLM[Google Gemini 3.1 Flash-Lite]
         LLM --> Response[Answer + Source Citations]
     end
 ```
@@ -87,7 +77,7 @@ Create a `.env` file in the project root:
 
 ```env
 GEMINI_API_KEY=your_gemini_api_key_here
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.1-flash-lite
 ```
 
 *(Optional fallback: `OPENROUTER_API_KEY=your_openrouter_key`)*
