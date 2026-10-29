@@ -10,79 +10,125 @@ pinned: false
 
 # 📚 Document RAG Assistant
 
-A complete Retrieval-Augmented Generation (RAG) system built with **FastAPI**, **Sentence-Transformers**, **FAISS Vector Search**, **Gradio**, and **Google Gemini LLM**.
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![Gradio](https://img.shields.io/badge/Gradio-6.31.0-orange.svg?logo=gradio&logoColor=white)](https://gradio.app/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![FAISS](https://img.shields.io/badge/FAISS-Vector%20Search-green.svg)](https://github.com/facebookresearch/faiss)
+[![Gemini](https://img.shields.io/badge/Google%20Gemini-2.5--Flash-4285F4.svg?logo=google&logoColor=white)](https://ai.google.dev/)
+[![Hugging Face Spaces](https://img.shields.io/badge/Hugging%20Face-Spaces-yellow.svg?logo=huggingface&logoColor=white)](https://huggingface.co/spaces)
 
-Designed for zero-cost deployment on **Hugging Face Spaces** (Free Tier: 2 vCPU + 16 GB RAM).
+A high-performance Retrieval-Augmented Generation (RAG) assistant designed for fast document ingestion, semantic search, and AI-powered context synthesis. Powered by **Google Gemini 2.5 Flash**, **Sentence-Transformers**, **FAISS Vector Search**, **FastAPI**, and **Gradio**.
+
+Built for zero-cost deployment on **Hugging Face Spaces** (Free Tier: 2 vCPU · 16 GB RAM) and local environments.
 
 ---
 
-## 🌟 Features
+## 🌟 Key Features
 
-- **Multi-Format Ingestion:** Supports `.pdf`, `.txt`, `.csv`, `.xlsx`, `.docx`, and `.json`.
+- **Sub-Second Incremental Ingestion:** Ingests and indexes documents in under `0.6` seconds using an $O(1)$ incremental pipeline without re-processing previously uploaded files.
+- **Strict Session Isolation:** Queries and citations are grounded exclusively on documents uploaded in the active session, eliminating cross-session leaks and outdated document bleed.
+- **Multi-Format Document Support:** Extracts and chunks text seamlessly from `.pdf`, `.txt`, `.csv`, `.xlsx`, `.docx`, and `.json`.
+- **High-Precision Semantic Retrieval:** Normalized inner-product cosine similarity powered by `all-MiniLM-L6-v2` dense embeddings.
 - **Dual Interface:**
-  - **Interactive Web UI (`/`):** Test questions, view retrieved citations with page numbers, and upload documents with one click.
-  - **REST API (`/docs`, `/query`, `/upload`, `/health`):** OpenAPI / Swagger documentation ready for integration.
-- **Fast Similarity Search:** Cosine similarity via FAISS index flat inner-product on normalized `all-MiniLM-L6-v2` embeddings.
-- **LLM Reasoning:** Connected to Google Gemini API (`gemini-2.5-flash`).
-- **Hugging Face Spaces Ready:** Configured for the free Gradio SDK with instant cold starts.
+  - **Interactive Web App:** User-friendly Gradio interface with live upload progress tracking, streaming indicators, and document citations with page numbers.
+  - **REST API:** Fully featured FastAPI endpoints (`/query`, `/upload`, `/health`) with interactive OpenAPI / Swagger documentation.
+- **Zero-Cost Deployment:** Native compatibility with Hugging Face Spaces Free Tier and ZeroGPU support via `@spaces.GPU`.
 
 ---
 
-## 🚀 Free Deployment to Hugging Face Spaces
+## 🏗️ System Architecture
 
-### Step 1: Create a New Space
-1. Log in to [Hugging Face](https://huggingface.co/).
-2. Click **New Space** (or go to [huggingface.co/new-space](https://huggingface.co/new-space)).
-3. Name your space (e.g., `document-rag-assistant`).
-4. Select **Gradio** as the Space SDK (100% free, no credit card required).
-5. Select the **Free** hardware tier (2 vCPU · 16 GB RAM).
+```mermaid
+flowchart LR
+    subgraph Ingestion ["1. Document Ingestion"]
+        Upload[User Uploads File] --> FormatParser[load_file]
+        FormatParser --> Splitter[RecursiveCharacterTextSplitter]
+        Splitter --> Embedder[all-MiniLM-L6-v2 Embeddings]
+        Embedder --> FAISS[(FAISS IndexFlatIP)]
+    end
 
-### Step 2: Configure Secrets
-1. Go to your Space's **Settings** tab.
-2. Under **Variables and secrets**, click **New secret**.
-3. Name: `GEMINI_API_KEY`
-4. Value: *your Gemini API key*
-
-### Step 3: Push Your Code
-In your local repository terminal:
-
-```bash
-# Add Hugging Face Space as a remote
-git remote add space https://huggingface.co/spaces/<YOUR_HF_USERNAME>/<YOUR_SPACE_NAME>
-
-# Push the code
-git push space main
+    subgraph Retrieval ["2. Retrieval & Generation"]
+        Query[User Question] --> QEmbed[Encode Query]
+        QEmbed --> Search[Cosine Similarity Search]
+        FAISS -. Chunks .-> Search
+        Search --> ContextFilter[Filter Top-k Chunks]
+        ContextFilter --> LLM[Google Gemini 2.5 Flash]
+        LLM --> Response[Answer + Source Citations]
+    end
 ```
 
-Hugging Face will automatically build the Docker container and launch the web UI at your space's URL!
-
 ---
 
-## 💻 Local Development
+## 🚀 Quick Start (Local Development)
 
-### Option A: Running with Python Virtualenv
+### Prerequisites
+
+- Python 3.10+
+- Google Gemini API Key ([Get a free key here](https://aistudio.google.com/app/apikey))
+
+### 1. Clone the Repository
 
 ```bash
-# Install dependencies
+git clone https://github.com/saugatadk/RAG.git
+cd RAG
+```
+
+### 2. Set Up Virtual Environment
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
+```
 
-# Create .env file with your key
-echo "OPENROUTER_API_KEY=your_key_here" > .env
+### 3. Configure Environment Variables
 
-# Run FastAPI + Gradio server
+Create a `.env` file in the project root:
+
+```env
+GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_MODEL=gemini-2.5-flash
+```
+
+*(Optional fallback: `OPENROUTER_API_KEY=your_openrouter_key`)*
+
+### 4. Run the Application
+
+#### Option A: Gradio Web UI (Recommended)
+```bash
+python app.py
+```
+Open **[http://localhost:7860](http://localhost:7860)** in your browser.
+
+#### Option B: FastAPI REST Server
+```bash
 uvicorn src.api:app --host 0.0.0.0 --port 7860 --reload
 ```
+Access the interactive Swagger API documentation at **[http://localhost:7860/docs](http://localhost:7860/docs)**.
 
-Open [http://localhost:7860](http://localhost:7860) for the Gradio UI, and [http://localhost:7860/docs](http://localhost:7860/docs) for the interactive Swagger API documentation.
+#### Option C: Docker Container
+```bash
+docker build -t document-rag .
+docker run -p 7860:7860 --env-file .env document-rag
+```
 
-### Option B: Running with Docker
+---
+
+## ☁️ Deployment to Hugging Face Spaces
+
+This repository is pre-configured for one-click deployment to Hugging Face Spaces.
+
+1. Create a new Space at **[huggingface.co/new-space](https://huggingface.co/new-space)**:
+   - **Space SDK:** `Gradio`
+   - **Hardware Tier:** `Free` (2 vCPU · 16 GB RAM)
+2. Add your API key in **Settings > Variables and secrets**:
+   - Secret Name: `GEMINI_API_KEY`
+   - Secret Value: `your-gemini-api-key`
+3. Push to Hugging Face:
 
 ```bash
-# Build the image
-docker build -t rag-app .
-
-# Run the container
-docker run -p 7860:7860 --env-file .env rag-app
+git remote add space https://huggingface.co/spaces/<YOUR_HF_USERNAME>/<YOUR_SPACE_NAME>
+git push space main
 ```
 
 ---
@@ -91,8 +137,45 @@ docker run -p 7860:7860 --env-file .env rag-app
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/` | Interactive Gradio Web Chat & Ingestion UI |
-| `GET` | `/docs` | OpenAPI / Swagger interactive documentation |
-| `GET` | `/health` | Health check endpoint (`{"status": "ok"}`) |
+| `GET` | `/` | Web Chat & Document Upload Interface |
+| `GET` | `/docs` | Interactive OpenAPI / Swagger UI |
+| `GET` | `/health` | Service health status check |
 | `POST` | `/query` | Query RAG pipeline (`{"query": "...", "top_k": 3}`) |
-| `POST` | `/upload` | Upload new documents and rebuild FAISS index |
+| `POST` | `/upload` | Upload and index new documents |
+
+### Example Query Request
+
+```bash
+curl -X POST "http://localhost:7860/query" \
+     -H "Content-Type: application/json" \
+     -d '{"query": "What are the core methodologies in the study guide?", "top_k": 3}'
+```
+
+---
+
+## 📂 Project Structure
+
+```
+├── app.py                  # Gradio application entrypoint
+├── Dockerfile              # Container definition for containerized deployment
+├── requirements.txt        # Production dependencies
+├── pyproject.toml          # Project configuration & packaging
+├── README.md               # Project documentation
+├── src/
+│   ├── dataloader.py       # Multi-format document loaders (.pdf, .txt, .csv, .docx, .json)
+│   ├── embedding.py        # Embedding pipeline & shared model singleton
+│   ├── vectorstore.py      # FAISS vector store with incremental indexing
+│   ├── search.py           # Context retrieval & Gemini LLM synthesis
+│   ├── ui.py               # Gradio UI components with session state & live progress
+│   ├── api.py              # FastAPI REST endpoints
+│   └── paths.py            # Environment-aware path resolution
+└── data/
+    ├── uploads/            # Upload staging directory
+    └── faiss_store/        # Local persistent FAISS vector indices
+```
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License.
