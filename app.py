@@ -1,3 +1,8 @@
+try:
+    import spaces
+except ImportError:
+    pass
+
 from src.ui import create_ui
 
 demo = create_ui()

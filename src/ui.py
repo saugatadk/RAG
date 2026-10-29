@@ -2,6 +2,14 @@ import os
 import shutil
 from pathlib import Path
 from typing import List, Tuple, Any
+
+try:
+    import spaces
+    gpu_decorator = spaces.GPU
+except (ImportError, Exception):
+    def gpu_decorator(fn):
+        return fn
+
 import gradio as gr
 
 from src.paths import resolve_path
@@ -23,6 +31,7 @@ def get_rag() -> RAGSearch:
     return _rag_instance
 
 
+@gpu_decorator
 def query_rag(message: str, history: List[Tuple[str, str]], top_k: int) -> Tuple[str, str]:
     if not message.strip():
         return "", "Please enter a valid question."
@@ -50,6 +59,7 @@ def query_rag(message: str, history: List[Tuple[str, str]], top_k: int) -> Tuple
     return summary, citations_md
 
 
+@gpu_decorator
 def upload_and_index(files: List[Any]) -> str:
     if not files:
         return "⚠️ No files selected."
