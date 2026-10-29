@@ -26,22 +26,14 @@ class RAGSearch:
 
         self.timeout = timeout
         self.gemini_key = os.getenv("GEMINI_API_KEY")
-        self.openrouter_key = os.getenv("OPENROUTER_API_KEY")
+        self.llm_model = llm_model or os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
 
         if self.gemini_key:
-            self.provider = "gemini"
-            self.llm_model = llm_model or os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
             print(f"[INFO] Gemini LLM initialized: {self.llm_model}")
-        elif self.openrouter_key:
-            self.provider = "openrouter"
-            self.llm_model = llm_model or os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3.5-lightning:free")
-            print(f"[INFO] OpenRouter LLM initialized: {self.llm_model}")
         else:
-            self.provider = "none"
-            self.llm_model = llm_model or "gemini-3.1-flash-lite"
-            print("[WARNING] Neither GEMINI_API_KEY nor OPENROUTER_API_KEY is set. Add GEMINI_API_KEY to your environment or Space Secrets.")
+            print("[WARNING] GEMINI_API_KEY is not set. Add GEMINI_API_KEY to your environment or Space Secrets.")
 
-    def _gemini_chat(self, prompt: str, max_tokens: int = 1024) -> str:
+    def _chat(self, prompt: str, max_tokens: int = 1024) -> str:
         api_key = os.getenv("GEMINI_API_KEY") or self.gemini_key
         if not api_key:
             return (
@@ -84,54 +76,6 @@ class RAGSearch:
             return "⚠️ Gemini API request timed out. Please try again."
         except requests.exceptions.RequestException:
             return "⚠️ Network error communicating with Gemini API. Please check your connection."
-
-    def _openrouter_chat(self, prompt: str, max_tokens: int = 1024) -> str:
-        api_key = os.getenv("OPENROUTER_API_KEY") or self.openrouter_key
-        if not api_key:
-            return (
-                "OPENROUTER_API_KEY is missing. "
-                "Please configure OPENROUTER_API_KEY in your Hugging Face Space Settings > Secrets (or in your local .env file)."
-            )
-        base_url = "https://openrouter.ai/api/v1/chat/completions"
-        payload = {
-            "model": self.llm_model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.1,
-            "max_tokens": max_tokens,
-        }
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
-        try:
-            response = requests.post(
-                base_url,
-                headers=headers,
-                json=payload,
-                timeout=self.timeout,
-            )
-            if response.status_code == 429:
-                return "⚠️ OpenRouter API rate limit reached (429). Please try again shortly."
-            if not response.ok:
-                return f"⚠️ OpenRouter API request failed with status code {response.status_code}."
-
-            data = response.json()
-            return data["choices"][0]["message"]["content"]
-        except requests.exceptions.Timeout:
-            return "⚠️ OpenRouter API request timed out. Please try again."
-        except requests.exceptions.RequestException:
-            return "⚠️ Network error communicating with OpenRouter LLM."
-
-    def _chat(self, prompt: str, max_tokens: int = 1024) -> str:
-        if os.getenv("GEMINI_API_KEY") or self.gemini_key:
-            return self._gemini_chat(prompt, max_tokens=max_tokens)
-        elif os.getenv("OPENROUTER_API_KEY") or self.openrouter_key:
-            return self._openrouter_chat(prompt, max_tokens=max_tokens)
-        else:
-            return (
-                "GEMINI_API_KEY is missing. "
-                "Please configure GEMINI_API_KEY in your Hugging Face Space Settings > Secrets (or in your local .env file)."
-            )
 
     def search_with_context(self, query: str, top_k: int = 5) -> Dict[str, Any]:
         if self.vectorstore.index is None or getattr(self.vectorstore.index, "ntotal", 0) == 0:
