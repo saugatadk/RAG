@@ -233,4 +233,4 @@ This is a **solo project** engineered from scratch by **Saugata Adhikari**:
 
 ## License
 
-This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the **MIT License**.
