@@ -15,7 +15,6 @@ class RAGSearch:
         data_dir: Optional[str] = None,
         embedding_model: str = "all-MiniLM-L6-v2",
         llm_model: Optional[str] = None,
-        base_url: str = "https://openrouter.ai/api/v1/chat/completions",
         timeout: int = 60,
     ):
         self.persist_dir = str(resolve_path(persist_dir, "data/faiss_store"))
@@ -32,22 +31,67 @@ class RAGSearch:
                 print(f"[INFO] No documents found in {self.data_dir} to build initial index. Ready for uploads.")
         else:
             self.vectorstore.load()
-        self.llm_model = llm_model or os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3.5-lightning:free")
-        self.base_url = base_url
-        self.timeout = timeout
-        self.api_key = os.getenv("OPENROUTER_API_KEY")
-        if not self.api_key:
-            print("[WARNING] OPENROUTER_API_KEY is not set. Add it in Hugging Face Space Settings > Secrets or .env file.")
-        else:
-            print(f"[INFO] OpenRouter LLM initialized: {self.llm_model}")
 
-    def _openrouter_chat(self, prompt: str, max_tokens: int = 1024) -> str:
-        api_key = os.getenv("OPENROUTER_API_KEY") or self.api_key
+        self.timeout = timeout
+        self.gemini_key = os.getenv("GEMINI_API_KEY")
+        self.openrouter_key = os.getenv("OPENROUTER_API_KEY")
+
+        if self.gemini_key:
+            self.provider = "gemini"
+            self.llm_model = llm_model or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+            print(f"[INFO] Gemini LLM initialized: {self.llm_model}")
+        elif self.openrouter_key:
+            self.provider = "openrouter"
+            self.llm_model = llm_model or os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3.5-lightning:free")
+            print(f"[INFO] OpenRouter LLM initialized: {self.llm_model}")
+        else:
+            self.provider = "none"
+            self.llm_model = llm_model or "gemini-2.5-flash"
+            print("[WARNING] Neither GEMINI_API_KEY nor OPENROUTER_API_KEY is set. Add GEMINI_API_KEY to your environment or Space Secrets.")
+
+    def _gemini_chat(self, prompt: str, max_tokens: int = 1024) -> str:
+        api_key = os.getenv("GEMINI_API_KEY") or self.gemini_key
         if not api_key:
             return (
-                "⚠️ OPENROUTER_API_KEY is missing. "
+                "GEMINI_API_KEY is missing. "
+                "Please configure GEMINI_API_KEY in your Hugging Face Space Settings > Secrets (or in your local .env file)."
+            )
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.llm_model}:generateContent?key={api_key}"
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": 0.2,
+                "maxOutputTokens": max_tokens,
+            },
+        }
+        headers = {"Content-Type": "application/json"}
+        try:
+            response = requests.post(
+                url,
+                headers=headers,
+                json=payload,
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            data = response.json()
+            candidates = data.get("candidates", [])
+            if candidates:
+                content = candidates[0].get("content", {})
+                parts = content.get("parts", [])
+                if parts:
+                    return parts[0].get("text", "").strip()
+            return "No response generated."
+        except requests.exceptions.RequestException as e:
+            return f"Error communicating with Gemini API: {str(e)}"
+
+    def _openrouter_chat(self, prompt: str, max_tokens: int = 1024) -> str:
+        api_key = os.getenv("OPENROUTER_API_KEY") or self.openrouter_key
+        if not api_key:
+            return (
+                "OPENROUTER_API_KEY is missing. "
                 "Please configure OPENROUTER_API_KEY in your Hugging Face Space Settings > Secrets (or in your local .env file)."
             )
+        base_url = "https://openrouter.ai/api/v1/chat/completions"
         payload = {
             "model": self.llm_model,
             "messages": [{"role": "user", "content": prompt}],
@@ -60,7 +104,7 @@ class RAGSearch:
         }
         try:
             response = requests.post(
-                self.base_url,
+                base_url,
                 headers=headers,
                 json=payload,
                 timeout=self.timeout,
@@ -69,7 +113,18 @@ class RAGSearch:
             data = response.json()
             return data["choices"][0]["message"]["content"]
         except requests.exceptions.RequestException as e:
-            return f"⚠️ Error communicating with OpenRouter LLM: {str(e)}"
+            return f"Error communicating with OpenRouter LLM: {str(e)}"
+
+    def _chat(self, prompt: str, max_tokens: int = 1024) -> str:
+        if os.getenv("GEMINI_API_KEY") or self.gemini_key:
+            return self._gemini_chat(prompt, max_tokens=max_tokens)
+        elif os.getenv("OPENROUTER_API_KEY") or self.openrouter_key:
+            return self._openrouter_chat(prompt, max_tokens=max_tokens)
+        else:
+            return (
+                "GEMINI_API_KEY is missing. "
+                "Please configure GEMINI_API_KEY in your Hugging Face Space Settings > Secrets (or in your local .env file)."
+            )
 
     def search_with_context(self, query: str, top_k: int = 5) -> Dict[str, Any]:
         results = self.vectorstore.query(query, top_k=top_k)
@@ -88,7 +143,7 @@ class RAGSearch:
         if not context_text:
             return {"summary": "No relevant documents found.", "results": contexts}
         prompt = f"""Summarize the following context for the query: '{query}'\n\nContext:\n{context_text}\n\nSummary:"""
-        summary = self._openrouter_chat(prompt)
+        summary = self._chat(prompt)
         return {"summary": summary, "results": contexts}
 
     def search_and_summarize(self, query: str, top_k: int = 5) -> str:

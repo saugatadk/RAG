@@ -117,7 +117,7 @@ def create_ui() -> gr.Blocks:
         gr.Markdown(
             """
             # 📚 Document RAG Assistant
-            Ask questions about your uploaded documents. Powered by **Sentence-Transformers**, **FAISS Vector Search**, and **OpenRouter LLM**.
+            Ask questions about your uploaded documents. Powered by **Sentence-Transformers**, **FAISS Vector Search**, and **Google Gemini LLM**.
             """
         )
 

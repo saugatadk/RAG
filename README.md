@@ -10,7 +10,7 @@ pinned: false
 
 # 📚 Document RAG Assistant
 
-A complete Retrieval-Augmented Generation (RAG) system built with **FastAPI**, **Sentence-Transformers**, **FAISS Vector Search**, **Gradio**, and **OpenRouter LLMs**.
+A complete Retrieval-Augmented Generation (RAG) system built with **FastAPI**, **Sentence-Transformers**, **FAISS Vector Search**, **Gradio**, and **Google Gemini LLM**.
 
 Designed for zero-cost deployment on **Hugging Face Spaces** (Free Tier: 2 vCPU + 16 GB RAM).
 
@@ -23,8 +23,8 @@ Designed for zero-cost deployment on **Hugging Face Spaces** (Free Tier: 2 vCPU 
   - **Interactive Web UI (`/`):** Test questions, view retrieved citations with page numbers, and upload documents with one click.
   - **REST API (`/docs`, `/query`, `/upload`, `/health`):** OpenAPI / Swagger documentation ready for integration.
 - **Fast Similarity Search:** Cosine similarity via FAISS index flat inner-product on normalized `all-MiniLM-L6-v2` embeddings.
-- **LLM Reasoning:** Connected to OpenRouter to query models such as `openai/gpt-oss-120b:free`.
-- **Hugging Face Spaces Ready:** Dockerized with UID 1000 permissions and pre-cached models for instant cold boots.
+- **LLM Reasoning:** Connected to Google Gemini API (`gemini-2.5-flash`).
+- **Hugging Face Spaces Ready:** Configured for the free Gradio SDK with instant cold starts.
 
 ---
 
@@ -40,8 +40,8 @@ Designed for zero-cost deployment on **Hugging Face Spaces** (Free Tier: 2 vCPU 
 ### Step 2: Configure Secrets
 1. Go to your Space's **Settings** tab.
 2. Under **Variables and secrets**, click **New secret**.
-3. Name: `OPENROUTER_API_KEY`
-4. Value: *your OpenRouter API key*
+3. Name: `GEMINI_API_KEY`
+4. Value: *your Gemini API key*
 
 ### Step 3: Push Your Code
 In your local repository terminal:
